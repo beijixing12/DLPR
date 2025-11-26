@@ -1,4 +1,12 @@
+import sys
+from pathlib import Path
+
 import gym
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from EduSim.Envs.KSS import KSSEnv, KSSAgent, kss_train_eval
 
 env: KSSEnv = gym.make("KSS-v2", seed=10)

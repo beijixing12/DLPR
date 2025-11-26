@@ -2,11 +2,18 @@ import os
 import sys
 import warnings
 import pickle
+from pathlib import Path
+
 import numpy as np
 import networkx as nx
-from tqdm import tqdm
-from EduSim.utils import get_proj_path, get_raw_data_path
 import pandas as pd
+from tqdm import tqdm
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from EduSim.utils import get_proj_path, get_raw_data_path
 
 cur_path = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(cur_path[:cur_path.find('IDALPR')] + 'IDALPR')
@@ -14,24 +21,50 @@ sys.path.append(cur_path[:cur_path.find('IDALPR')] + 'IDALPR')
 warnings.filterwarnings('ignore')
 
 def load_dataset(base_data_path, graph_type, KT_graph_path=None, model_type='GKT'):
+    """Load student interaction sequences and build a transition-style graph.
 
-    concept_num = 97
+    Supports both the original directory-per-student format and a flat CSV with
+    columns `user_id, problem_id, correct, skill_id, end_time`.
+    """
+
     question_list = []
     answer_list = []
     seq_len_list = []
-    student_num = 0
 
-    for k, _ in enumerate(os.listdir(base_data_path)):
-        for _, file_name in tqdm(enumerate(os.listdir(f'{base_data_path}{k + 1}/train/'))):
-            with open(f'{base_data_path}{k + 1}/train/{file_name}', 'r') as f:
-                one_student_data = f.readlines()[1:]  # header exists
+    if os.path.isfile(base_data_path):
+        df = pd.read_csv(base_data_path)
+        if not {'user_id', 'problem_id', 'correct'}.issubset(df.columns):
+            raise ValueError("CSV must include user_id, problem_id, and correct columns.")
 
-            one_student_data = [[int(line.rstrip().split(',')[0]) - 1, int(line.rstrip().split(',')[1])]
-                                for _, line in enumerate(one_student_data)]
-            question_list.append([el[0] for el in one_student_data])
-            answer_list.append([el[1] for el in one_student_data])
-            seq_len_list.append(len(one_student_data))
-            student_num += 1
+        if 'end_time' in df.columns:
+            df = df.sort_values(['user_id', 'end_time'])
+
+        for _, group in tqdm(df.groupby('user_id'), desc='load csv users'):
+            questions = group['problem_id'].to_numpy()
+            # If problem ids are 1-based and contain no zero, shift to 0-based.
+            if questions.min() == 1 and 0 not in questions:
+                questions = questions - 1
+            answers = group['correct'].astype(int).to_numpy()
+            question_list.append(list(questions))
+            answer_list.append(list(answers))
+            seq_len_list.append(len(questions))
+
+        student_num = len(question_list)
+    else:
+        for k, _ in enumerate(os.listdir(base_data_path)):
+            for _, file_name in tqdm(enumerate(os.listdir(f'{base_data_path}{k + 1}/train/'))):
+                with open(f'{base_data_path}{k + 1}/train/{file_name}', 'r') as f:
+                    one_student_data = f.readlines()[1:]  # header exists
+
+                one_student_data = [[int(line.rstrip().split(',')[0]) - 1, int(line.rstrip().split(',')[1])]
+                                    for _, line in enumerate(one_student_data)]
+                question_list.append([el[0] for el in one_student_data])
+                answer_list.append([el[1] for el in one_student_data])
+                seq_len_list.append(len(one_student_data))
+
+        student_num = len(question_list)
+
+    concept_num = int(max(max(qs) for qs in question_list) + 1) if question_list else 0
 
     graph = None
     if model_type == 'GKT':
@@ -46,6 +79,7 @@ def load_dataset(base_data_path, graph_type, KT_graph_path=None, model_type='GKT
 
     print(graph)
     np.save('./meta_data/MyTransitionGraph.npy', graph)
+    return concept_num
 
 
 def build_support_graph(question_list, answer_list, seq_len_list, student_num):
@@ -132,8 +166,7 @@ def build_dense_graph(node_num):
 
 if __name__ == '__main__':
     base_data_path = "./meta_data/preprocessed_data.csv"
-    load_dataset(base_data_path, 'Transition')
-    num_skills = 97
+    num_skills = load_dataset(base_data_path, 'Transition')
 
     graph = np.load('./meta_data/MyTransitionGraph.npy')
 

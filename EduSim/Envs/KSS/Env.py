@@ -13,10 +13,7 @@ from .utils import load_environment_parameters
 import math
 import torch
 
-import sys
-
-sys.path.append('../')
-from KT import Agent_KT
+from IDALPR.KT import Agent_KT
 
 __all__ = ["KSSEnv"]
 
