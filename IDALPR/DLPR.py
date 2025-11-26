@@ -10,7 +10,7 @@ import sys
 
 
 sys.path.append('../')
-from KT import Agent_KT
+from IDALPR.KT import Agent_KT
 from AC import ActorCritic,Data_P
 from PPO import PPO,Data_L
 
